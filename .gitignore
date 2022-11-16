@@ -3,7 +3,7 @@ botbuilder-python/
 botbuilder-samples/
 core_bot/
 Echo_bot/
-
+cred.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
