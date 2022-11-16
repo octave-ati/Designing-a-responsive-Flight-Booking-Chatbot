@@ -1,3 +1,10 @@
+Data/
+botbuilder-python/
+botbuilder-samples/
+core_bot/
+Echo_bot/
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
