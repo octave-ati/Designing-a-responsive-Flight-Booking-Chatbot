@@ -68,6 +68,7 @@ class UserProfileDialog(ComponentDialog):
                     self.end_date_step,
                     self.budget_step,
                     self.summary_step,
+                    self.rating_step,
                 ],
             )
         )
@@ -137,9 +138,11 @@ class UserProfileDialog(ComponentDialog):
     async def correction_step(self, step_context: WaterfallStepContext) -> DialogTurnResult:
       
        if step_context.result:
+        insights.save_success_data(success=True)
         return await step_context.next(-1)
 
        else:
+            insights.save_success_data(success=False)
             choices = []
             for ent in relevant_entities:
                 if step_context.values[ent] != None:
@@ -208,9 +211,11 @@ class UserProfileDialog(ComponentDialog):
             return await step_context.next(-5)
 
        if step_context.result:
+        insights.save_success_data(success=True)
         return await step_context.next(-1)
 
        else:
+            insights.save_success_data(success=False)
             choices = []
             for ent in relevant_entities:
                 if step_context.values[ent] != None:
@@ -372,9 +377,26 @@ class UserProfileDialog(ComponentDialog):
             await step_context.context.send_activity(MessageFactory.text(
                 "Thank you for using Flybot. \r \n Your flight details will be send to you by mail shortly"))
 
+            return await step_context.prompt(
+            ChoicePrompt.__name__,
+            PromptOptions(
+                prompt=MessageFactory.text("Please rate this bot:"),
+                choices=[Choice("1"), Choice("2"),Choice("3"), Choice("4"), Choice("5")],
+            ),)
+
         # WaterfallStep always finishes with the end of the Waterfall or with another
         # dialog, here it is the end.
         return await step_context.end_dialog()
+
+    async def rating_step(self, step_context: WaterfallStepContext) -> DialogTurnResult:
+        
+        score = int(step_context.result)
+
+        insights.save_user_score(score)
+
+        await step_context.context.send_activity(MessageFactory.text(
+                "Thank you for your help in improving this bot! Have a wonderful day!"))
+        return await step_context.end_dialog()        
 
     @staticmethod
     async def age_prompt_validator(prompt_context: PromptValidatorContext) -> bool:
