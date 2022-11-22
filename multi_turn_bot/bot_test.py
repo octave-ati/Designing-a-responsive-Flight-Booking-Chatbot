@@ -1,11 +1,22 @@
 import pytest
 import insights
-import config
 import logging
 import luis
 import pandas as pd
 import numpy as np
+import os
 from opencensus.ext.azure.log_exporter import AzureLogHandler
+
+#The config file is gitignored to prevent key compromission
+try :
+	#If config loads, load the API key from the file
+    import config  
+    key = config.insights_connection_string
+
+except ImportError:
+    #We load the API key from git secrets
+    key = os.environ.get("INSIGHTS_CONNECTION_STRING")
+
 
 #Verify that logger connection is working
 
@@ -21,7 +32,6 @@ def configure_logger(key):
 	return logger
 
 def test_instrument_key():
-	key = config.insights_connection_string
 
 	assert configure_logger(key)
 

@@ -1,11 +1,22 @@
-import config
 import requests
 import pandas as pd
 import numpy as np
+import os
 
-pred_endpoint = config.pred_endpoint
-pred_key = config.pred_key
-app_id = config.app_id
+
+try :
+    #If config loads, load the API key from the file
+    import config  
+    pred_endpoint = config.pred_endpoint
+    pred_key = config.pred_key
+    app_id = config.app_id
+
+except ImportError:
+    #We load the secrets from the loaded variables 
+    pred_endpoint = os.environ.get("PRED_ENDPOINT")
+    pred_key = os.environ.get("PRED_KEY")
+    app_id = os.environ.get("LUIS_APP_ID")
+
 
 relevant_entities = ['budget','dst_city','or_city','str_date','end_date']
 

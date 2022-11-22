@@ -29,6 +29,11 @@ jobs:
         python -m pip install datetime
         python -m pip install opencensus-ext-azure
         python -m pip install requests
-    - name: Test with pytest
+    - name: Bot Test with pytest
+      env:
+        INSIGHTS_CONNECTION_STRING: ${{ secrets.INSIGHTS_CONNECTION_STRING }}
+        LUIS_APP_ID: ${{ secrets.LUIS_APP_ID }}
+        PRED_ENDPOINT: ${{ secrets.PRED_ENDPOINT }}
+        PRED_KEY: ${{ secrets.PRED_KEY }}
       run: |
         pytest

@@ -1,5 +1,4 @@
 import logging
-import config
 import time
 import random
 from datetime import datetime
@@ -11,11 +10,21 @@ from opencensus.stats import stats as stats_module
 from opencensus.stats import view as view_module
 from opencensus.tags import tag_map as tag_map_module
 
+
+try :
+	#If config loads, load the API key from the file
+    import config  
+    insights_string = config.insights_connection_string
+
+except ImportError:
+    #We load the API key from git secrets
+    insights_string = os.environ.get("INSIGHTS_CONNECTION_STRING")
+
 def configure_logger():
 	logger = logging.getLogger(__name__)
 
 	logger.addHandler(AzureLogHandler(
-	    connection_string=config.insights_connection_string)
+	    connection_string=insights_string)
 	)
 	return logger
 
@@ -111,7 +120,7 @@ view_manager.register_view(entity_accuracy_view)
 
 exporter = metrics_exporter.new_metrics_exporter(
 	enable_standard_metrics = False,
-    connection_string=config.insights_connection_string)
+    connection_string=insights_string)
 
 
 view_manager.register_exporter(exporter)
