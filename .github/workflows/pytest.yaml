@@ -29,7 +29,6 @@ jobs:
         python -m pip install datetime
         python -m pip install opencensus-ext-azure
         python -m pip install requests
-        python -m pip install time
     - name: Test with pytest
       run: |
         pytest
