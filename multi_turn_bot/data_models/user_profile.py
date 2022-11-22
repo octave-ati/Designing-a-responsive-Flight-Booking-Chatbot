@@ -9,15 +9,12 @@ class UserProfile:
       This is our application state. Just a regular serializable Python class.
     """
 
-    def __init__(self, name: str = None, transport: str = None, age: int = 0,
-     picture: Attachment = None, destination: str=None, departure: str=None, budget: int=None,
-     start_date: str=None, end_date: str=None):
-        self.name = name
-        self.transport = transport
-        self.age = age
-        self.picture = picture
-        self.destination = destination
-        self.departure = departure
-        self.start_date = start_date
+    def __init__(self, n_entities: int=None, dst_city: str=None, or_city: str=None, budget: int=None,
+     str_date: str=None, end_date: str=None):
+
+        self.n_entities = n_entities
+        self.dst_city = dst_city
+        self.or_city = or_city
+        self.str_date = str_date
         self.end_date = end_date
         self.budget = budget

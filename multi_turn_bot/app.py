@@ -22,6 +22,8 @@ from botbuilder.schema import Activity, ActivityTypes
 from config import DefaultConfig
 from dialogs import UserProfileDialog
 from bots import DialogBot
+import insights
+import config
 
 CONFIG = DefaultConfig()
 
@@ -29,6 +31,8 @@ CONFIG = DefaultConfig()
 # See https://aka.ms/about-bot-adapter to learn more about how bots work.
 SETTINGS = BotFrameworkAdapterSettings(CONFIG.APP_ID, CONFIG.APP_PASSWORD)
 ADAPTER = BotFrameworkAdapter(SETTINGS)
+
+logger = insights.configure_logger()
 
 
 # Catch-all for errors.
@@ -44,6 +48,9 @@ async def on_error(context: TurnContext, error: Exception):
     await context.send_activity(
         "To continue to run this bot, please fix the bot source code."
     )
+
+    logger.fatal("Bot Crash")
+
     # Send a trace activity if we're talking to the Bot Framework Emulator
     if context.activity.channel_id == "emulator":
         # Create a trace activity that contains the error object

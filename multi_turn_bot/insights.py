@@ -28,8 +28,16 @@ errors_measure = measure_module.MeasureInt("number_errors",
                                            "Number of wrongly detected information",
                                            "requests")
 success_measure = measure_module.MeasureInt("number_success",
-                                           "Number of successfull language queries",
+                                           "Number of successful language queries",
                                            "requests")
+
+detected_measure = measure_module.MeasureInt("number_detection",
+                                           "Number of successful entities detected",
+                                           "detections")
+
+dialog_measure = measure_module.MeasureInt("number_dialogs",
+                                           "Number of opened dialogs with the bot",
+                                           "dialogs")
 
 score_measure = measure_module.MeasureInt("user_score",
 									   "Score provided by the user at the end of each discussion",
@@ -38,6 +46,12 @@ score_measure = measure_module.MeasureInt("user_score",
 accuracy_measure = measure_module.MeasureInt("total_accuracy",
                                            "Overall Bot Accuracy",
                                            "%")
+
+entity_accuracy_measure = measure_module.MeasureInt("entity_accuracy",
+                                           "Accuracy taking into account the number of entities detected",
+                                           "%")
+
+
 errors_view = view_module.View("number_errors",
                                "Count of the number of wrongly detected information",
                                [],
@@ -48,6 +62,18 @@ success_view = view_module.View("number_success",
                                "Count of the number of user confirmation prompts answered positively",
                                [],
                                success_measure,
+                               aggregation_module.CountAggregation())
+
+detection_view = view_module.View("number_detection",
+                               "Count of the number of entities correctly detected by the LUIS algorithm",
+                               [],
+                               detected_measure,
+                               aggregation_module.CountAggregation())
+
+dialog_view = view_module.View("number_dialogs",
+                               "Count of the number of dialogs entered by users",
+                               [],
+                               dialog_measure,
                                aggregation_module.CountAggregation())
 
 score_view = view_module.View("user_score",
@@ -63,11 +89,21 @@ accuracy_view = view_module.View("total_accuracy",
                                accuracy_measure,
                                aggregation_module.LastValueAggregation())
 
+entity_accuracy_view = view_module.View("entity_accuracy",
+                               "Accuracy taking into account the number of entities detected",
+                               [],
+                               entity_accuracy_measure,
+                               aggregation_module.LastValueAggregation())
+
+
 
 view_manager.register_view(errors_view)
 view_manager.register_view(success_view)
+view_manager.register_view(detection_view)
+view_manager.register_view(dialog_view)
 view_manager.register_view(score_view)
 view_manager.register_view(accuracy_view)
+view_manager.register_view(entity_accuracy_view)
 
 #mmap = stats_recorder.new_measurement_map()
 
@@ -116,6 +152,16 @@ def save_accuracy(err, succ):
 	mmap_acc.measure_int_put(accuracy_measure, accuracy)
 	mmap_acc.record(tmap_acc)
 
+def save_entity_accuracy(err, n_entities):
+
+	mmap_acc_ent = stats_recorder.new_measurement_map()
+	tmap_acc_ent = tag_map_module.TagMap()
+
+	accuracy = int(100*n_entities / (err+n_entities))
+
+	mmap_acc_ent.measure_int_put(entity_accuracy_measure, accuracy)
+	mmap_acc_ent.record(tmap_acc_ent)
+
 
 def save_request_data(success=True):
 	err, succ = save_success_or_failure(success)
@@ -127,6 +173,27 @@ def save_user_score(score):
 
 	mmap_score.measure_int_put(score_measure, score)
 	mmap_score.record(tmap_score)
+
+def save_entities_detected(n_entities: int):
+	mmap_entities = stats_recorder.new_measurement_map()
+	tmap_entities = tag_map_module.TagMap()
+
+	#Saving n successes, n being the number of entities detected
+	for i in range(n_entities):
+		mmap_entities.measure_int_put(detected_measure, 1)
+		mmap_entities.record(tmap_entities)
+
+
+def save_n_dialog():
+	mmap_dialog = stats_recorder.new_measurement_map()
+	tmap_dialog = tag_map_module.TagMap()
+
+	mmap_dialog.measure_int_put(dialog_measure, 1)
+	mmap_dialog.record(tmap_dialog)
+
+
+
+#The code below has been used to test the different functions in this file
 
 # def prompt():
 
@@ -184,17 +251,15 @@ def save_user_score(score):
 # 		save_user_score()
 # 		x+=1
 
-properties = {'custom_dimensions': {'key_1': 'value_1', 'key_2': 'value_2'}}
-def main():
-	x = 0
-	logger = configure_logger()
-	while x < 1:
-		x+=1
-		logger.error('No Prediction', extra = properties)
-		logger.warning('Wrong Information', extra = properties)
-		logger.info('Predicted Information', extra = properties)
+# properties = {'custom_dimensions': {'key_1': 'value_1', 'key_2': 'value_2'}}
+# def main():
+# 	x = 0
+
+# 	while x < 1:
+# 		x+=1
+# 		save_entities_detected(5)
 
 		
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

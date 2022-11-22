@@ -40,10 +40,10 @@ def is_information_complete(step_context):
         if step_context.values[ent] != None:
             i+=1
 
-    if i > 0:
-        return False
-    else:
+    if i == 5:
         return True
+    else:
+        return False
 
 
 class UserProfileDialog(ComponentDialog):
@@ -69,21 +69,15 @@ class UserProfileDialog(ComponentDialog):
                     self.budget_step,
                     self.summary_step,
                     self.rating_step,
+                    self.final_step
                 ],
             )
         )
         self.add_dialog(TextPrompt(TextPrompt.__name__))
-        self.add_dialog(TextPrompt("prompt:validation"))
-        self.add_dialog(
-            NumberPrompt(NumberPrompt.__name__, UserProfileDialog.age_prompt_validator)
-        )
+        # self.add_dialog(TextPrompt("prompt:validation"))
+
         self.add_dialog(ChoicePrompt(ChoicePrompt.__name__))
         self.add_dialog(ConfirmPrompt(ConfirmPrompt.__name__))
-        self.add_dialog(
-            AttachmentPrompt(
-                AttachmentPrompt.__name__, UserProfileDialog.picture_prompt_validator
-            )
-        )
 
         self.initial_dialog_id = WaterfallDialog.__name__
 
@@ -97,7 +91,10 @@ class UserProfileDialog(ComponentDialog):
         for ent in relevant_entities:
             step_context.values[ent] = None
 
+        #Incrementing our n_dialog metric
+        insights.save_n_dialog()
 
+        #Displaying user prompt
         return await step_context.prompt(
             TextPrompt.__name__,
             PromptOptions(
@@ -108,6 +105,11 @@ class UserProfileDialog(ComponentDialog):
 
         resp = luis.get_entities(step_context.result)
         entities = luis.update_entities(step_context, resp)
+        n_entities = len(entities)
+
+        step_context.values['n_entities'] = n_entities
+        step_context.values['entities'] = entities.to_dict()['entities']
+        step_context.values['query'] = resp['query']
 
         #Generating pre generated entities to prevent repetitive API requests
         # entities = pd.DataFrame([{'entities': 'Toronto'}, {'entities': 'Budapest'},
@@ -116,7 +118,7 @@ class UserProfileDialog(ComponentDialog):
         # step_context.values['dst_city'] = 'Budapest'
         # step_context.values['str_date'] = 'November 11th'
 
-        if len(entities) == 0 :
+        if n_entities == 0 :
             await step_context.context.send_activity(MessageFactory.text(
                 "No booking information detected, please try again."))
             error_properties = {'custom_dimensions': {'query': resp['query']}}
@@ -125,41 +127,59 @@ class UserProfileDialog(ComponentDialog):
             return await step_context.next(-99)
 
 
+        else:
+            #Logging request results
+            properties = {'custom_dimensions': {**{'query': resp['query']}, **entities.to_dict()['entities']}}
+            logger.info("Predicted Information", extra= properties )
+            
+            #Building confirmation message
+            return_msg = "Here is the retrieved information: \r\n"
+            for index, row in entities.iterrows():
+                return_msg += entities_dict[index] + " : " + row['entities'] + " \r\n"
 
 
-        return_msg = "Here is the retrieved information: \r\n"
-        for index, row in entities.iterrows():
-            return_msg += entities_dict[index] + " : " + row['entities'] + " \r\n"
+            #Sending detected entities
+            await step_context.context.send_activity(MessageFactory.text(return_msg))
 
-
-
-        await step_context.context.send_activity(MessageFactory.text(return_msg))
-
-        return await step_context.prompt(
-            ConfirmPrompt.__name__,
-            PromptOptions(
-                prompt=MessageFactory.text("Do you confirm the information above?")
-            ),
-        )
+            return await step_context.prompt(
+                ConfirmPrompt.__name__,
+                PromptOptions(
+                    prompt=MessageFactory.text("Do you confirm the information above?")
+                ),
+            )
     
 
     async def correction_step(self, step_context: WaterfallStepContext) -> DialogTurnResult:
 
        if step_context.result == -99:
-        insights.save_success_data(success=False)
+        insights.save_request_data(success=False)
+        insights.save_entity_accuracy(1,0)
         return await step_context.next(-1) 
       
        elif step_context.result:
-        insights.save_success_data(success=True)
+        insights.save_request_data(success=True)
+
+        #Saving the number of successfully detected entities
+        insights.save_entities_detected(step_context.values['n_entities'])
+        insights.save_entity_accuracy(0,step_context.values['n_entities'])
+        step_context.values['n_entities'] = 0
+
         return await step_context.next(-1)
 
        else:
-            insights.save_success_data(success=False)
+            insights.save_request_data(success=False)
+            #Saving the number of successfully detected entities
+
+            #No List Prompt is available, so we have to suppose that only 1 entity was wrongly detected
+            insights.save_entities_detected(step_context.values['n_entities']-1)
+            insights.save_entity_accuracy(1,step_context.values['n_entities']-1)
+            step_context.values['n_entities'] = 0
             choices = []
             for ent in relevant_entities:
                 if step_context.values[ent] != None:
 
                     choices.append(Choice(entities_dict[ent]))
+            choices.append(Choice("Multiple Fields"))
             return await step_context.prompt(
             ChoicePrompt.__name__,
             PromptOptions(
@@ -170,64 +190,89 @@ class UserProfileDialog(ComponentDialog):
     async def second_request_step(self, step_context: WaterfallStepContext) -> DialogTurnResult:
         
         if step_context.result != -1:
+            #If several fields are wrong, we clean all saved information
+            if step_context.result.value == "Multiple Fields":
+                #Saving a log with 0% accuracy
+                insights.save_entity_accuracy(1,0)
 
-            step_context.values[step_context.result] = None
-            await step_context.context.send_activity(MessageFactory.text(
-                "Thank you for your help! Clearing wrong information."))
+                #Logging the detected fields :
+                properties = {'custom_dimensions': {**{'query': step_context.values['query']},
+                 **step_context.values['entities']}}
+                logger.warn("Several Wrong Info", extra= properties )
+                #Clearing all fields
+                for i in relevant_entities:
+                    step_context.values[i] = None
+                await step_context.context.send_activity(MessageFactory.text(
+                "Thank you for your help! Clearing the detected information."))
+            else:
+                entity_list = [k for k,v in entities_dict.items() if v == step_context.result.value]
+                if len(entity_list) > 0:
+                    step_context.values[entity_list[0]] = None
+                await step_context.context.send_activity(MessageFactory.text(
+                    "Thank you for your help! Clearing wrong information."))
 
-        elif is_information_complete(step_context):
+        if is_information_complete(step_context):
             return await step_context.next(-5)
 
-
-        text = "Please provide me with the information below so I can complete your flight booking: \r \n"
-        for ent in relevant_entities:
-                if step_context.values[ent] == None:
-                    text += entities_dict[ent] + "\r \n"
-        return await step_context.prompt(
-            TextPrompt.__name__,
-            PromptOptions(
-                prompt=MessageFactory.text(
-                    text)),
-        )
+        #Second prompt displaying missing entities
+        else:
+            text = "Please provide me with the information below so I can complete your flight booking: \r \n"
+            for ent in relevant_entities:
+                    if step_context.values[ent] == None:
+                        text += entities_dict[ent] + "\r \n"
+            return await step_context.prompt(
+                TextPrompt.__name__,
+                PromptOptions(
+                    prompt=MessageFactory.text(
+                        text)),
+            )
     async def second_confirm_step(self, step_context: WaterfallStepContext) -> DialogTurnResult:
 
         if step_context.result == -5:
             return await step_context.next(-5)
+        else:
 
-        # resp = luis.get_entities(step_context.result)
-        # entities = luis.update_entities(step_context, resp)
+            resp = luis.get_entities(step_context.result)
+            entities = luis.update_entities(step_context, resp)
 
-        #Generating pre generated entities to prevent repetitive API requests
-        entities = pd.DataFrame([{'entities': '2500$'}], index=['budget'])
+            n_entities = len(entities)
 
-        if len(entities) == 0 :
-            await step_context.context.send_activity(MessageFactory.text(
-                "No booking information detected, switching to manual input."))
+            step_context.values['n_entities'] = n_entities
+            step_context.values['entities'] = entities.to_dict()['entities']
+            step_context.values['query'] = resp['query']
 
-            #Logging error
-            error_properties = {'custom_dimensions': {'query': resp['query']}}
-            logger.error("No Prediction", extra = error_properties)
 
-            return await step_context.next(-99)
+            #Generating pre generated entities to prevent repetitive API requests
+            # entities = pd.DataFrame([{'entities': '2500$'}], index=['budget'])
+            # step_context.values['budget'] = '2500$'
 
-        #Logging request results
-        properties = {'custom_dimensions': {**{'query': resp['query']}, **entities.to_dict()['entities']}}
-        logger.info("Predicted Information", extra= properties )
+            if len(entities) == 0 :
+                await step_context.context.send_activity(MessageFactory.text(
+                    "No booking information detected, switching to manual input."))
 
-        step_context.values['budget'] = '2500$'
+                #Logging error
+                error_properties = {'custom_dimensions': {'query': resp['query']}}
+                logger.error("No Prediction", extra = error_properties)
 
-        return_msg = "Here is the retrieved information: \r\n"
-        for index, row in entities.iterrows():
-            return_msg += entities_dict[index] + " : " + row['entities'] + " \r\n"
+                return await step_context.next(-99)
 
-        await step_context.context.send_activity(MessageFactory.text(return_msg))
+            else:
+                #Logging request results
+                properties = {'custom_dimensions': {**{'query': resp['query']}, **entities.to_dict()['entities']}}
+                logger.info("Predicted Information", extra= properties )
 
-        return await step_context.prompt(
-            ConfirmPrompt.__name__,
-            PromptOptions(
-                prompt=MessageFactory.text("Do you confirm the information above?")
-            ),
-        )
+                return_msg = "Here is the retrieved information: \r\n"
+                for index, row in entities.iterrows():
+                    return_msg += entities_dict[index] + " : " + row['entities'] + " \r\n"
+
+                await step_context.context.send_activity(MessageFactory.text(return_msg))
+
+                return await step_context.prompt(
+                    ConfirmPrompt.__name__,
+                    PromptOptions(
+                        prompt=MessageFactory.text("Do you confirm the information above?")
+                    ),
+                )
 
 
 
@@ -237,20 +282,31 @@ class UserProfileDialog(ComponentDialog):
             return await step_context.next(-5)
         
        elif step_context.result == -99:
-            insights.save_success_data(success=False)
+            insights.save_request_data(success=False)
+            insights.save_entity_accuracy(1,0)
             return await step_context.next(-1)
 
        elif step_context.result:
-        insights.save_success_data(success=True)
+        #Saving the number of successfully detected entities
+        insights.save_entities_detected(step_context.values['n_entities'])
+        insights.save_entity_accuracy(0,step_context.values['n_entities'])
+        step_context.values['n_entities'] = 0
+        insights.save_request_data(success=True)
         return await step_context.next(-1)
 
        else:
-            insights.save_success_data(success=False)
+            insights.save_request_data(success=False)
+            #Saving the number of successfully detected entities
+            #We have to suppose that only one was poorly detected because there is no option for ListPrompt
+            insights.save_entities_detected(step_context.values['n_entities']-1)
+            insights.save_entity_accuracy(1,step_context.values['n_entities']-1)
+            step_context.values['n_entities'] = 0
             choices = []
             for ent in relevant_entities:
                 if step_context.values[ent] != None:
 
-                    choices.append(Choice(ent))
+                    choices.append(Choice(entities_dict[ent]))
+            choices.append(Choice('Multiple Fields'))
             return await step_context.prompt(
             ChoicePrompt.__name__,
             PromptOptions(
@@ -266,20 +322,39 @@ class UserProfileDialog(ComponentDialog):
 
         elif step_context.result != -1:
 
-            step_context.values[step_context.result] = None
-            await step_context.context.send_activity(MessageFactory.text(
-                "Thank you for your help! Clearing wrong information."))
+            if step_context.result.value == "Multiple Fields":
+                #Saving a log with 0% accuracy
+                insights.save_entity_accuracy(1,0)
 
-        elif is_information_complete(step_context):
+                #Logging the detected fields :
+                properties = {'custom_dimensions': {**{'query': step_context.values['query']},
+                 **step_context.values['entities']}}
+                logger.warn("Several Wrong Info", extra= properties )
+
+                #Clearing all fields
+                for i in relevant_entities:
+                    step_context.values[i] = None
+                await step_context.context.send_activity(MessageFactory.text(
+                "Thank you for your help! Clearing the detected information."))
+            else:
+                entity_list = [k for k,v in entities_dict.items() if v == step_context.result.value]
+                if len(entity_list) > 0:
+                    step_context.values[entity_list[0]] = None
+                await step_context.context.send_activity(MessageFactory.text(
+                    "Thank you for your help! Clearing wrong information."))
+
+        if is_information_complete(step_context):
             return await step_context.next(-5)
+        else:
 
-        await step_context.context.send_activity(MessageFactory.text(
+            await step_context.context.send_activity(MessageFactory.text(
                 "Unable to retrieve all necessary information."))
 
-        if step_context.values['dst_city'] != None:
-            return await step_context.next(-1)
 
-        else:
+            if step_context.values['dst_city'] != None:
+                return await step_context.next(-1)
+
+
 
             return await step_context.prompt(
                 TextPrompt.__name__,
@@ -299,7 +374,7 @@ class UserProfileDialog(ComponentDialog):
         if is_information_complete(step_context):
             return await step_context.next(-5)
 
-        elif step_context.values['or_city'] != None:
+        if step_context.values['or_city'] != None:
             return await step_context.next(-1)
 
         else:
@@ -318,13 +393,12 @@ class UserProfileDialog(ComponentDialog):
                 f"Your departure city is {step_context.result}"))
             step_context.values['or_city'] = step_context.result
 
-        if is_information_complete(step_context):
+        elif is_information_complete(step_context):
             return await step_context.next(-5)
 
-        elif step_context.values['str_date'] != None:
+        if step_context.values['str_date'] != None:
             return await step_context.next(-1)
-            
-        else:
+        else:   
             return await step_context.prompt(
                 TextPrompt.__name__,
                 PromptOptions(
@@ -340,10 +414,10 @@ class UserProfileDialog(ComponentDialog):
                 f"Your departure date is {step_context.result}"))
             step_context.values['str_date'] = step_context.result
 
-        if is_information_complete(step_context):
+        elif is_information_complete(step_context):
             return await step_context.next(-5)
 
-        elif step_context.values['end_date'] != None:
+        if step_context.values['end_date'] != None:
             return await step_context.next(-1)
             
         else:
@@ -362,10 +436,10 @@ class UserProfileDialog(ComponentDialog):
                 f"Your return date is {step_context.result}"))
             step_context.values['end_date'] = step_context.result
 
-        if is_information_complete(step_context):
+        elif is_information_complete(step_context):
             return await step_context.next(-5)
 
-        elif step_context.values['budget'] != None:
+        if step_context.values['budget'] != None:
             return await step_context.next(-1)
             
         else:
@@ -397,41 +471,53 @@ class UserProfileDialog(ComponentDialog):
             user_profile.or_city = step_context.values['or_city']
             user_profile.dst_city = step_context.values['dst_city']
 
-            return_msg = "Thank you for using this bot. Please find below the information for this booking : \r \n"
+            return_msg = "Please find below the information for this booking : \r \n"
 
             for ent in relevant_entities:
                 return_msg += entities_dict[ent] + " : " + step_context.values[ent] + " \r\n"
 
             await step_context.context.send_activity(MessageFactory.text(return_msg))
 
-            await step_context.context.send_activity(MessageFactory.text(
-                "Thank you for using Flybot. \r \n Your flight details will be send to you by mail shortly"))
-
             return await step_context.prompt(
-            ChoicePrompt.__name__,
-            PromptOptions(
-                prompt=MessageFactory.text("Please rate this bot:"),
-                choices=[Choice("1"), Choice("2"),Choice("3"), Choice("4"), Choice("5")],
-            ),)
+                ConfirmPrompt.__name__,
+                PromptOptions(
+                    prompt=MessageFactory.text("Do you want me to book a flight for you?")
+                ),
+            )
 
-        # WaterfallStep always finishes with the end of the Waterfall or with another
-        # dialog, here it is the end.
-        return await step_context.end_dialog()
+            
 
     async def rating_step(self, step_context: WaterfallStepContext) -> DialogTurnResult:
+
+        if step_context.result:
+
+            await step_context.context.send_activity(MessageFactory.text(
+                    "Thank you for using Flybot. \r \n Your flight details will be send to you by mail shortly"))
+
+            return await step_context.prompt(
+                ChoicePrompt.__name__,
+                PromptOptions(
+                    prompt=MessageFactory.text("Please rate this bot :"),
+                    choices=[Choice("1"), Choice("2"),Choice("3"), Choice("4"), Choice("5")],
+                ),)
+            
+        else:
+            return await step_context.prompt(
+                ChoicePrompt.__name__,
+                PromptOptions(
+                    prompt=MessageFactory.text("No problem, I hope this bot was useful. Please provide us a rating"),
+                    choices=[Choice("1"), Choice("2"),Choice("3"), Choice("4"), Choice("5")],
+                ),)
+
+
+    async def final_step(self, step_context: WaterfallStepContext) -> DialogTurnResult:
         
-        score = int(step_context.result)
+        score = int(step_context.result.value)
 
         insights.save_user_score(score)
 
         await step_context.context.send_activity(MessageFactory.text(
-                "Thank you for your help in improving this bot! Have a wonderful day!"))
+                "The FlyBot team really appreciates your help in improving this bot! Have a wonderful day!"))
+        await step_context.context.send_activity(MessageFactory.text(
+                "Feel free to send a message to this Bot to book another flight!"))
         return await step_context.end_dialog()        
-
-    @staticmethod
-    async def age_prompt_validator(prompt_context: PromptValidatorContext) -> bool:
-        # This condition is our validation rule. You can also change the value at this point.
-        return (
-            prompt_context.recognized.succeeded
-            and 0 < prompt_context.recognized.value < 150
-        )
