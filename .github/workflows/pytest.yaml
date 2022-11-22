@@ -26,7 +26,6 @@ jobs:
         python -m pip install pytest
         python -m pip install pandas
         python -m pip install numpy
-        python -m pip install logging
         python -m pip install datetime
         python -m pip install opencensus-ext-azure
         python -m pip install requests
