@@ -184,21 +184,17 @@ def save_user_score(score):
 # 		save_user_score()
 # 		x+=1
 
-
-
+properties = {'custom_dimensions': {'key_1': 'value_1', 'key_2': 'value_2'}}
 def main():
-	logger = configure_logger()
-	properties = {'custom_dimensions': {'key_1': 'value_1', 'key_2': 'value_2'}}
-
 	x = 0
-
+	logger = configure_logger()
 	while x < 1:
 		x+=1
-		# Use properties in exception logs
-		try:
-		    result = 1 / 0  # generate a ZeroDivisionError
-		except Exception:
-		    logger.exception('Captured an exception.', extra=properties)
+		logger.error('No Prediction', extra = properties)
+		logger.warning('Wrong Information', extra = properties)
+		logger.info('Predicted Information', extra = properties)
+
+		
 
 if __name__ == "__main__":
     main()
