@@ -157,6 +157,8 @@ class UserProfileDialog(ComponentDialog):
         return await step_context.next(-1) 
       
        elif step_context.result:
+        properties = {'custom_dimensions': {**{'query': step_context.values['query']}, **step_context.values['entities']}}
+        logger.info("Good Prediction", extra= properties )
         insights.save_request_data(success=True)
 
         #Saving the number of successfully detected entities
@@ -167,6 +169,8 @@ class UserProfileDialog(ComponentDialog):
         return await step_context.next(-1)
 
        else:
+            properties = {'custom_dimensions': {**{'query': step_context.values['query']}, **step_context.values['entities']}}
+            logger.info("Wrong Prediction", extra= properties )
             insights.save_request_data(success=False)
             #Saving the number of successfully detected entities
 
