@@ -27,6 +27,9 @@ def configure_logger():
 	logger.addHandler(AzureLogHandler(
 	    connection_string=insights_string)
 	)
+	#Setting logger level to information
+	logger.setLevel('INFO')
+
 	return logger
 
 
