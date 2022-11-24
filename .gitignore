@@ -4,8 +4,8 @@ botbuilder-samples/
 core_bot/
 Echo_bot/
 cred.py
-multi_turn_bot/config.py
-
+bot/config.py
+*.zip
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
