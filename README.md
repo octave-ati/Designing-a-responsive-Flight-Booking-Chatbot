@@ -17,11 +17,20 @@ the Application Insights platform using the Logs and Metrics features.
 * [Jupyter Notebook (Model training)](Notebook.ipynb)
 * [Bot Dialog File](bot/dialogs/user_profile_dialog.py)
 
-<!-- ## Screenshots
+## Screenshots
 
-<img src="./design/screen0.png">&ensp;<img src="./design/screen1.png">
+### Bot Dialog
+![Bot Dialog](img/bot.png)
 
-> -->
+### Logged Metrics
+![Metrics](img/metrics.png)
+
+### Monitoring Dashboard
+![Dashboard](img/dashboard.png)
+
+### Model Performance
+![Model Performance](img/performance.png)
+
 
 ## Libraries / Packages Used
 
